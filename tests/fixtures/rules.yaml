@@ -1,0 +1,10 @@
+rules:
+  - id: has-title
+    severity: error
+    criterion: |
+      The file must begin with a level-1 Markdown heading (a line starting with `# `).
+
+  - id: has-example
+    severity: warning
+    criterion: |
+      The file must contain at least one fenced code block.

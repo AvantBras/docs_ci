@@ -1,0 +1,19 @@
+rules:
+  - id: has-title
+    severity: error
+    criterion: |
+      The file must begin with a level-1 Markdown heading (a line starting
+      with a single `#`) that names what the page is about.
+
+  - id: has-description
+    severity: error
+    criterion: |
+      After the title, the file must include at least one paragraph of
+      prose (at least 2 sentences) that describes the page's purpose or
+      contents.
+
+  - id: no-todos
+    severity: warning
+    criterion: |
+      The file must not contain "TODO", "FIXME", or "XXX" markers in its
+      prose. Occurrences inside fenced code blocks are acceptable.

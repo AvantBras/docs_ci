@@ -1,0 +1,29 @@
+[project]
+name = "docs_ci"
+version = "0.0.1"
+description = "CI tooling that uses a small LLM to judge natural-language criteria against a project's documentation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "CRAPL" }
+dependencies = [
+    "anthropic>=0.40",
+    "pydantic>=2.6",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+docs-ci = "docs_ci.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
