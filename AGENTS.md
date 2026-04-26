@@ -30,9 +30,9 @@ Likely evolution: one file per rule under `.docs-ci/rules/*.md` once criteria gr
 
 ## Open decisions (discuss before introducing)
 
-- Language / runtime for the CLI (Python vs TypeScript).
-- CLI framework, test framework, report output format.
 - Per-rule model override (Haiku is weak on some semantic cross-references).
+
+For the broader feature roadmap and longer-horizon ideas, see [ROADMAP.md](ROADMAP.md).
 
 ## Conventions
 
