@@ -42,17 +42,30 @@ docs/api/users.md
 ## CLI
 
 ```
-docs-ci check PATH --rules RULES.yaml [--model MODEL] [--fail-on error|warning]
+docs-ci check PATH --rules RULES.yaml \
+  [--provider anthropic|openrouter|nvidia] \
+  [--model MODEL] [--fail-on error|warning]
 ```
 
-| Flag         | Default              | Notes                                            |
-|--------------|----------------------|--------------------------------------------------|
-| `PATH`       | required             | Docs directory to scan (markdown only in v0).    |
-| `--rules`    | required             | Path to rules YAML.                              |
-| `--model`    | `claude-haiku-4-5`   | Anthropic model ID.                              |
-| `--fail-on`  | `error`              | Exit 1 on failures at or above this severity.    |
+| Flag         | Default              | Notes                                                       |
+|--------------|----------------------|-------------------------------------------------------------|
+| `PATH`       | required             | Docs directory to scan (markdown only in v0).               |
+| `--rules`    | required             | Path to rules YAML.                                         |
+| `--provider` | `anthropic`          | LLM provider. See *Providers* below.                        |
+| `--model`    | provider default     | Model ID. Defaults vary per provider.                       |
+| `--fail-on`  | `error`              | Exit 1 on failures at or above this severity.               |
 
 Exit codes: `0` (all required rules passed), `1` (failure at or above `--fail-on`), `2` (config / CLI error).
+
+## Providers
+
+| `--provider`  | Endpoint                              | API key env var      | Default model                       |
+|---------------|---------------------------------------|----------------------|-------------------------------------|
+| `anthropic`   | api.anthropic.com (native)            | `ANTHROPIC_API_KEY`  | `claude-haiku-4-5`                  |
+| `openrouter`  | openrouter.ai (OpenAI-compatible)     | `OPENROUTER_API_KEY` | `anthropic/claude-haiku-4-5`        |
+| `nvidia`      | integrate.api.nvidia.com (OpenAI-compat) | `NVIDIA_API_KEY`  | `meta/llama-3.1-70b-instruct`       |
+
+Anthropic prompt caching is applied when calling the Anthropic provider directly, and is forwarded as best-effort when routing through OpenRouter to an `anthropic/*` model. Other provider+model combinations send no cache hints.
 
 ## License
 

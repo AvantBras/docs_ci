@@ -1,17 +1,14 @@
 from pathlib import Path
 
-from anthropic import Anthropic
-
 from docs_ci.config import RulesConfig, Verdict
 from docs_ci.discover import iter_docs
-from docs_ci.judge import judge
+from docs_ci.judges import Judge
 
 
 def run(
     cfg: RulesConfig,
     docs_root: Path,
-    client: Anthropic,
-    model: str,
+    judge: Judge,
 ) -> list[Verdict]:
     verdicts: list[Verdict] = []
     # Loop order is load-bearing (AGENTS.md invariant #2): files outer, rules inner.
@@ -23,9 +20,7 @@ def run(
         relative = str(path.relative_to(docs_root))
         for rule in cfg.rules:
             verdicts.append(
-                judge(
-                    client=client,
-                    model=model,
+                judge.judge(
                     file_path=path,
                     relative_path=relative,
                     file_content=content,

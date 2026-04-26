@@ -2,11 +2,10 @@ from pathlib import Path
 
 import typer
 import yaml
-from anthropic import Anthropic
 from pydantic import ValidationError
 
-from docs_ci.config import Severity, load_rules
-from docs_ci.judge import DEFAULT_MODEL
+from docs_ci.config import Provider, Severity, load_rules
+from docs_ci.judges import build_judge, default_model
 from docs_ci.report import exit_code, format_report
 from docs_ci.runner import run
 
@@ -40,7 +39,16 @@ def check(
         dir_okay=False,
         help="Path to rules YAML.",
     ),
-    model: str = typer.Option(DEFAULT_MODEL, "--model", help="Anthropic model ID."),
+    provider: Provider = typer.Option(
+        Provider.anthropic,
+        "--provider",
+        help="LLM provider backing the judge.",
+    ),
+    model: str = typer.Option(
+        None,
+        "--model",
+        help="Model ID. Defaults to a provider-specific value.",
+    ),
     fail_on: Severity = typer.Option(
         Severity.error,
         "--fail-on",
@@ -57,7 +65,13 @@ def check(
         typer.echo(f"error: invalid rules file {rules}:\n{e}", err=True)
         raise typer.Exit(code=2)
 
-    client = Anthropic()
-    verdicts = run(cfg=cfg, docs_root=path, client=client, model=model)
+    resolved_model = model or default_model(provider)
+    try:
+        judge = build_judge(provider=provider, model=resolved_model)
+    except RuntimeError as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=2)
+
+    verdicts = run(cfg=cfg, docs_root=path, judge=judge)
     typer.echo(format_report(verdicts, docs_root=path))
     raise typer.Exit(code=exit_code(verdicts, fail_on=fail_on))

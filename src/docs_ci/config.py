@@ -10,6 +10,12 @@ class Severity(StrEnum):
     warning = "warning"
 
 
+class Provider(StrEnum):
+    anthropic = "anthropic"
+    openrouter = "openrouter"
+    nvidia = "nvidia"
+
+
 class Rule(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
