@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from docs_ci.config import Severity, Verdict
-from docs_ci.report import FAIL, PASS, exit_code, format_report
+from docs_ci.report import FAIL, PASS, Format, exit_code, format_report
 
 
 def _v(name: str, rule_id: str, passed: bool, severity: Severity = Severity.error, reason: str = "r"):
@@ -64,3 +64,29 @@ def test_report_pluralization():
     assert "2 errors" in out
     assert "0 warnings" in out
     assert "across 1 file" in out
+
+
+def test_default_format_is_text():
+    """Existing call sites (no format kwarg) must keep working unchanged."""
+    verdicts = [_v("a.md", "r2", False, Severity.error, reason="bad")]
+    explicit = format_report(verdicts, docs_root=Path("/tmp"), format=Format.text)
+    default = format_report(verdicts, docs_root=Path("/tmp"))
+    assert default == explicit
+
+
+def test_text_format_unchanged_regression():
+    """Pin the text-format output to its previous shape so future refactors
+    don't silently change it."""
+    verdicts = [
+        _v("a.md", "r1", True),
+        _v("a.md", "r2", False, Severity.error, reason="bad"),
+    ]
+    out = format_report(verdicts, docs_root=Path("/tmp"), format=Format.text)
+    expected = (
+        "a.md\n"
+        f"  {FAIL} r2 (error) — bad\n"
+        f"  {PASS} r1\n"
+        "\n"
+        "1 error, 0 warnings across 1 file"
+    )
+    assert out == expected

@@ -44,7 +44,7 @@ docs/api/users.md
 ```
 docs-ci check PATH --rules RULES.yaml \
   [--provider anthropic|openrouter|nvidia] \
-  [--model MODEL] [--fail-on error|warning] \
+  [--model MODEL] [--fail-on error|warning] [--format text|github] \
   [--no-cache] [--cache-path PATH] \
   [--changed-only] [--base-ref REF]
 ```
@@ -56,6 +56,7 @@ docs-ci check PATH --rules RULES.yaml \
 | `--provider`     | `anthropic`          | LLM provider. See *Providers* below.                        |
 | `--model`        | provider default     | Model ID. Defaults vary per provider.                       |
 | `--fail-on`      | `error`              | Exit 1 on failures at or above this severity.               |
+| `--format`       | `text`               | Output format. `github` emits Actions annotations + summary. See *GitHub Actions output* below. |
 | `--no-cache`     | off                  | Disable the persistent verdict cache for this run.          |
 | `--cache-path`   | `.docs-ci/cache.json`| Where the verdict cache lives. See *Verdict cache* below.   |
 | `--changed-only` | off                  | Only judge files that changed since `--base-ref`. See *Diff mode* below. |
@@ -141,6 +142,32 @@ Behavior notes:
 - Tracked-only — untracked `.md` files (new files not yet `git add`-ed) are not included. Run without `--changed-only` while drafting new docs locally.
 - If the rules YAML itself has changed since the base ref, `docs-ci` warns on stderr and continues anyway — re-run without `--changed-only` for a full check after touching rules.
 - Requires a git working tree; errors at exit code 2 if invoked outside one.
+
+## GitHub Actions output
+
+`--format github` emits [GitHub Actions workflow commands](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions) so failing rules surface as inline PR comments and entries in the run's Checks panel:
+
+```yaml
+- run: |
+    docs-ci check ./docs --rules ./rules.yaml \
+      --format github --changed-only --base-ref origin/${{ github.base_ref }}
+```
+
+Output looks like:
+
+```
+::error file=docs/api.md,line=1,title=docs-ci/has-title::file starts with prose; the heading is on line 4
+::warning file=docs/intro.md,line=1,title=docs-ci/no-todos::found "TODO" in prose
+1 error, 1 warning across 2 files
+```
+
+Notes:
+
+- Each failing verdict becomes one annotation; passing verdicts are silent.
+- Annotation `title=` is namespaced as `docs-ci/<rule_id>` so it's distinguishable from other tools' annotations.
+- All annotations land on `line=1` in v0 — verdicts are per-file, and per-line attribution would either need the LLM to return one (extends the tool schema) or a regex pass over the reason. Deferred.
+- File paths are relativized against `$GITHUB_WORKSPACE` (set by Actions), falling back to the git working tree, falling back to the current directory.
+- The grouped per-file text report is suppressed under this format — the GitHub UI groups annotations per-file already, and a duplicate text dump would just clutter logs.
 
 ## License
 

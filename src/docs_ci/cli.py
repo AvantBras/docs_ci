@@ -16,7 +16,7 @@ from docs_ci.diff import (
     verify_ref,
 )
 from docs_ci.judges import build_judge, default_model
-from docs_ci.report import exit_code, format_report
+from docs_ci.report import Format, exit_code, format_report
 from docs_ci.runner import run
 
 app = typer.Typer(
@@ -63,6 +63,11 @@ def check(
         Severity.error,
         "--fail-on",
         help="Exit 1 on failures at or above this severity.",
+    ),
+    output_format: Format = typer.Option(
+        Format.text,
+        "--format",
+        help="Output format. 'github' emits GitHub Actions annotations + a summary.",
     ),
     no_cache: bool = typer.Option(
         False,
@@ -150,5 +155,5 @@ def check(
         cache=cache,
         changed_files=changed,
     )
-    typer.echo(format_report(verdicts, docs_root=path))
+    typer.echo(format_report(verdicts, docs_root=path, format=output_format))
     raise typer.Exit(code=exit_code(verdicts, fail_on=fail_on))
