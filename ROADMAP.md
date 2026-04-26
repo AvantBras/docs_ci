@@ -33,18 +33,19 @@ Ranked roughly by value × tractability, opinionated. Push back where you disagr
 
 5. **Provider ergonomics.** `docs-ci providers test [NAME]` for pre-flight auth + model validation (one cheap call to verify env vars and model IDs before paying for a real scan), and a generic `--provider openai-compat --base-url ... --api-key-env ...` escape hatch for OpenAI-compatible endpoints we don't curate by name (Together, Groq, DeepSeek, OpenAI direct, local Ollama / vLLM, etc.). A project-local `.docs-ci.yaml` with named provider profiles is deferred until item 6 (per-rule overrides) needs a place to resolve names from. Skipping `providers add` / `remove` subcommands — editing YAML is fine.
 6. **Per-rule model override.** Lets a user route *"is this code example actually runnable?"* to a stronger model and *"are there any TODOs in prose?"* to a cheaper one. Cleanly composes with the shipped provider layer: per-rule `model:` and `provider:` fields.
+7. **Provider/model fallback chain.** Opt-in `--fallback PROVIDER:MODEL` (repeatable). Triggers on hard failures only — HTTP 5xx, network timeout, connection error — never on 4xx, JSON parse errors, or missing tool calls (those are config bugs and should fail fast). The report annotates verdicts that came from a fallback so escalations stay visible. Composes with the persistent verdict cache (item 1): a successful fallback verdict is cached just like a primary one, so transient outages don't keep re-paying their timeout cost. Unblocked by items 5 (provider ergonomics) and 6 (per-rule model override) — the more interesting per-rule fallback chains land naturally once those exist.
 
 ### v1 milestone — GitHub Action
 
-7. **`action.yml` wrapper.** Thin GitHub Action that installs the CLI and invokes it. Combined with annotations (item 3), this is the marketed v1 — drop into any docs repo, get inline PR review comments.
-8. **Per-rule `include` / `exclude` globs.** Already deferred in [AGENTS.md](AGENTS.md); comes back as soon as v1 hits projects with mixed content (API docs, blog posts, changelogs that shouldn't all be judged the same way).
+8. **`action.yml` wrapper.** Thin GitHub Action that installs the CLI and invokes it. Combined with annotations (item 3), this is the marketed v1 — drop into any docs repo, get inline PR review comments.
+9. **Per-rule `include` / `exclude` globs.** Already deferred in [AGENTS.md](AGENTS.md); comes back as soon as v1 hits projects with mixed content (API docs, blog posts, changelogs that shouldn't all be judged the same way).
 
 ### Exploratory / longer horizon
 
-9. **Few-shot examples in rules.** Let a rule carry `examples: [{file: ..., passes: true, reason: ...}]` to anchor the judge's interpretation. Costs more per call but should noticeably improve calibration on subjective rules.
-10. **Rule self-tests.** A rule declares known-pass and known-fail fixture files; `docs-ci test-rules` verifies the LLM still calls them right when models or prompts change. Catches regressions in rule wording — an underrated failure mode for prose-as-spec systems.
-11. **Cross-file criteria.** AGENTS.md says explicitly out-of-scope for v0. Most legitimate cases (broken links, TOC coherence, definition duplicates) are better handled by deterministic linters anyway. But *"cross-page tone consistency"* or *"this API surface is documented in exactly one place"* are real wants and don't fit a deterministic linter — that's where this comes back, with a different execution mode.
-12. **MCP server mode.** Expose `docs-ci` over MCP so an agent (Claude Code, Cursor, etc.) can ask *"judge this draft against the project's rules"* during authoring. Different distribution channel than CI; same underlying engine.
+10. **Few-shot examples in rules.** Let a rule carry `examples: [{file: ..., passes: true, reason: ...}]` to anchor the judge's interpretation. Costs more per call but should noticeably improve calibration on subjective rules.
+11. **Rule self-tests.** A rule declares known-pass and known-fail fixture files; `docs-ci test-rules` verifies the LLM still calls them right when models or prompts change. Catches regressions in rule wording — an underrated failure mode for prose-as-spec systems.
+12. **Cross-file criteria.** AGENTS.md says explicitly out-of-scope for v0. Most legitimate cases (broken links, TOC coherence, definition duplicates) are better handled by deterministic linters anyway. But *"cross-page tone consistency"* or *"this API surface is documented in exactly one place"* are real wants and don't fit a deterministic linter — that's where this comes back, with a different execution mode.
+13. **MCP server mode.** Expose `docs-ci` over MCP so an agent (Claude Code, Cursor, etc.) can ask *"judge this draft against the project's rules"* during authoring. Different distribution channel than CI; same underlying engine.
 
 ## Explicitly not on the roadmap
 
