@@ -44,16 +44,19 @@ docs/api/users.md
 ```
 docs-ci check PATH --rules RULES.yaml \
   [--provider anthropic|openrouter|nvidia] \
-  [--model MODEL] [--fail-on error|warning]
+  [--model MODEL] [--fail-on error|warning] \
+  [--no-cache] [--cache-path PATH]
 ```
 
-| Flag         | Default              | Notes                                                       |
-|--------------|----------------------|-------------------------------------------------------------|
-| `PATH`       | required             | Docs directory to scan (markdown only in v0).               |
-| `--rules`    | required             | Path to rules YAML.                                         |
-| `--provider` | `anthropic`          | LLM provider. See *Providers* below.                        |
-| `--model`    | provider default     | Model ID. Defaults vary per provider.                       |
-| `--fail-on`  | `error`              | Exit 1 on failures at or above this severity.               |
+| Flag           | Default              | Notes                                                       |
+|----------------|----------------------|-------------------------------------------------------------|
+| `PATH`         | required             | Docs directory to scan (markdown only in v0).               |
+| `--rules`      | required             | Path to rules YAML.                                         |
+| `--provider`   | `anthropic`          | LLM provider. See *Providers* below.                        |
+| `--model`      | provider default     | Model ID. Defaults vary per provider.                       |
+| `--fail-on`    | `error`              | Exit 1 on failures at or above this severity.               |
+| `--no-cache`   | off                  | Disable the persistent verdict cache for this run.          |
+| `--cache-path` | `.docs-ci/cache.json`| Where the verdict cache lives. See *Verdict cache* below.   |
 
 Exit codes: `0` (all required rules passed), `1` (failure at or above `--fail-on`), `2` (config / CLI error).
 
@@ -93,6 +96,28 @@ docs-ci check ./docs --rules ./examples/rules.example.yaml \
 ```
 
 Tip: OpenRouter and NVIDIA both occasionally offer free access to specific models — handy for trying `docs-ci` on a real docs set without spending anything. Whatever model you pick must support tool / function calling; `docs-ci` forces a structured `submit_verdict` call and will error out otherwise.
+
+## Verdict cache
+
+`docs-ci` keeps a persistent JSON cache at `.docs-ci/cache.json` keyed on `(file_content, criterion, prompt_fingerprint, provider, model)`. On the second run, any unchanged `(file, rule)` pair is served from the cache without an LLM call — a typical incremental CI run on a 100-file repo where one file changed drops from ~100 calls to ~1.
+
+The cache invalidates automatically when:
+
+- a file's content changes;
+- a rule's criterion text changes (renaming a rule's `id` alone does **not** invalidate);
+- the provider, model, or internal prompt/tool schema changes.
+
+Add `.docs-ci/` to your `.gitignore` — the cache is local. In CI, persist it across runs with the standard cache action, e.g. for GitHub Actions:
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: .docs-ci
+    key: docs-ci-${{ hashFiles('**/*.md', 'rules.yaml') }}
+    restore-keys: docs-ci-
+```
+
+`--no-cache` disables it entirely for one run; `--cache-path` relocates the file.
 
 ## License
 

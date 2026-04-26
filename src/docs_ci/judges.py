@@ -129,6 +129,7 @@ class Judge(Protocol):
     """Contract for any backend that can judge ``(file, rule) -> Verdict``."""
 
     model: str
+    provider: Provider
 
     def judge(
         self,
@@ -141,6 +142,8 @@ class Judge(Protocol):
 
 class AnthropicJudge:
     """Direct Anthropic API. Source-of-truth wire format for v0."""
+
+    provider: Provider = Provider.anthropic
 
     def __init__(self, client: Anthropic, model: str) -> None:
         self._client = client
@@ -237,13 +240,13 @@ class OpenAICompatJudge:
         provider: Provider,
         transport: Transport,
     ) -> None:
-        self._provider = provider
+        self.provider = provider
         self._transport = transport
         self.model = model
 
     def _supports_cache_passthrough(self) -> bool:
         return (
-            self._provider == Provider.openrouter
+            self.provider == Provider.openrouter
             and self.model.startswith("anthropic/")
         )
 

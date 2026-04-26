@@ -4,6 +4,7 @@ import typer
 import yaml
 from pydantic import ValidationError
 
+from docs_ci.cache import DEFAULT_CACHE_PATH, NullCache, VerdictCache
 from docs_ci.config import Provider, Severity, load_rules
 from docs_ci.judges import build_judge, default_model
 from docs_ci.report import exit_code, format_report
@@ -54,6 +55,16 @@ def check(
         "--fail-on",
         help="Exit 1 on failures at or above this severity.",
     ),
+    no_cache: bool = typer.Option(
+        False,
+        "--no-cache",
+        help="Disable the persistent verdict cache for this run.",
+    ),
+    cache_path: Path = typer.Option(
+        DEFAULT_CACHE_PATH,
+        "--cache-path",
+        help="Path to the persistent verdict cache (JSON).",
+    ),
 ) -> None:
     """Check a docs directory against a rules YAML."""
     try:
@@ -72,6 +83,9 @@ def check(
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=2)
 
-    verdicts = run(cfg=cfg, docs_root=path, judge=judge)
+    cache: VerdictCache | NullCache
+    cache = NullCache() if no_cache else VerdictCache.load(cache_path)
+
+    verdicts = run(cfg=cfg, docs_root=path, judge=judge, cache=cache)
     typer.echo(format_report(verdicts, docs_root=path))
     raise typer.Exit(code=exit_code(verdicts, fail_on=fail_on))

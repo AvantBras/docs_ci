@@ -84,6 +84,10 @@ def _judge_call(judge, *, rule: Rule | None = None):
 
 
 class TestAnthropicJudge:
+    def test_exposes_provider_attribute(self):
+        judge = AnthropicJudge(client=MagicMock(), model="claude-haiku-4-5")
+        assert judge.provider == Provider.anthropic
+
     def test_returns_verdict_from_tool_use(self):
         client = _mock_anthropic_client(passed=False, reason="missing code example")
         rule = Rule(
@@ -162,6 +166,12 @@ class TestAnthropicJudge:
 
 
 class TestOpenAICompatJudge:
+    def test_exposes_provider_attribute(self):
+        judge = OpenAICompatJudge(
+            model="x", provider=Provider.nvidia, transport=lambda body: {}
+        )
+        assert judge.provider == Provider.nvidia
+
     def test_returns_verdict_from_tool_call(self):
         transport = _fake_transport(_ok_openai_response(passed=False, reason="no example"))
         rule = Rule(
