@@ -13,7 +13,8 @@ Long-term direction: a single CLI, also packaged as a GitHub Action, that anyone
 - **Prompt caching wired** — system prompt + file content are cached; the criterion is the variable suffix. Cache hits accrue across rules within the same file.
 - **Structured output via `tool_use`** — forced `tool_choice` on a `submit_verdict` tool with a typed schema. No JSON-in-prose flakiness.
 - **YAML config validation** — pydantic models with `extra="forbid"`, kebab-case ID validation, duplicate-ID detection.
-- **Test suite** — 21 unit tests, Anthropic client fully mocked.
+- **Pluggable provider layer** — direct Anthropic (default), [OpenRouter](https://openrouter.ai), and [NVIDIA build.nvidia.com](https://build.nvidia.com) behind a `Judge` protocol. CLI flag `--provider`, per-provider default models, env-var auth (`ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` / `NVIDIA_API_KEY`). Anthropic-style `cache_control` is forwarded best-effort on OpenRouter → `anthropic/*` models; other provider+model combinations send no cache hints and will lean on the persistent verdict cache (item 1) once shipped.
+- **Test suite** — 35 unit tests, Anthropic and OpenAI-compatible clients fully mocked.
 
 Not yet: tried against real docs at scale, packaged as a GitHub Action, anything below.
 
@@ -28,22 +29,21 @@ Ranked roughly by value × tractability, opinionated. Push back where you disagr
 3. **GitHub Actions annotations.** Emit `::error file=X,line=Y,title=...::reason` so failures surface as inline PR comments instead of buried in a log. Add as a `--format github` flag; near-zero implementation cost; large UX win for the marketed v1.
 4. **Cost / token estimation (`docs-ci estimate`).** Use `count_tokens` to predict cost before running. Useful when adding rules to a large doc set. The LLM-judge model is cheap but not free; surfacing the cost upfront builds trust and prevents surprise bills.
 
-### Inference provider abstraction (your ask)
+### Inference provider abstraction (continued)
 
-5. **Pluggable provider layer.** Support [OpenRouter](https://openrouter.ai), [NVIDIA build.nvidia.com](https://build.nvidia.com), and direct Anthropic. The `judge.py` contract is small enough to put behind a `Judge` protocol. The hard design question is what to do about prompt caching — it's an Anthropic-native wire-level feature; OpenAI-compatible endpoints don't replicate it. Worth designing carefully so the persistent verdict cache (item 1) compensates when prompt caching is unavailable, and so models that *do* support similar caching (e.g. via OpenRouter passthrough) still benefit.
-6. **Per-rule model override.** Lets a user route *"is this code example actually runnable?"* to a stronger model and *"are there any TODOs in prose?"* to a cheaper one. Cleanly composes with item 5: per-rule `model:` and `provider:` fields.
+5. **Per-rule model override.** Lets a user route *"is this code example actually runnable?"* to a stronger model and *"are there any TODOs in prose?"* to a cheaper one. Cleanly composes with the shipped provider layer: per-rule `model:` and `provider:` fields.
 
 ### v1 milestone — GitHub Action
 
-7. **`action.yml` wrapper.** Thin GitHub Action that installs the CLI and invokes it. Combined with annotations (item 3), this is the marketed v1 — drop into any docs repo, get inline PR review comments.
-8. **Per-rule `include` / `exclude` globs.** Already deferred in [AGENTS.md](AGENTS.md); comes back as soon as v1 hits projects with mixed content (API docs, blog posts, changelogs that shouldn't all be judged the same way).
+6. **`action.yml` wrapper.** Thin GitHub Action that installs the CLI and invokes it. Combined with annotations (item 3), this is the marketed v1 — drop into any docs repo, get inline PR review comments.
+7. **Per-rule `include` / `exclude` globs.** Already deferred in [AGENTS.md](AGENTS.md); comes back as soon as v1 hits projects with mixed content (API docs, blog posts, changelogs that shouldn't all be judged the same way).
 
 ### Exploratory / longer horizon
 
-9. **Few-shot examples in rules.** Let a rule carry `examples: [{file: ..., passes: true, reason: ...}]` to anchor the judge's interpretation. Costs more per call but should noticeably improve calibration on subjective rules.
-10. **Rule self-tests.** A rule declares known-pass and known-fail fixture files; `docs-ci test-rules` verifies the LLM still calls them right when models or prompts change. Catches regressions in rule wording — an underrated failure mode for prose-as-spec systems.
-11. **Cross-file criteria.** AGENTS.md says explicitly out-of-scope for v0. Most legitimate cases (broken links, TOC coherence, definition duplicates) are better handled by deterministic linters anyway. But *"cross-page tone consistency"* or *"this API surface is documented in exactly one place"* are real wants and don't fit a deterministic linter — that's where this comes back, with a different execution mode.
-12. **MCP server mode.** Expose `docs-ci` over MCP so an agent (Claude Code, Cursor, etc.) can ask *"judge this draft against the project's rules"* during authoring. Different distribution channel than CI; same underlying engine.
+8. **Few-shot examples in rules.** Let a rule carry `examples: [{file: ..., passes: true, reason: ...}]` to anchor the judge's interpretation. Costs more per call but should noticeably improve calibration on subjective rules.
+9. **Rule self-tests.** A rule declares known-pass and known-fail fixture files; `docs-ci test-rules` verifies the LLM still calls them right when models or prompts change. Catches regressions in rule wording — an underrated failure mode for prose-as-spec systems.
+10. **Cross-file criteria.** AGENTS.md says explicitly out-of-scope for v0. Most legitimate cases (broken links, TOC coherence, definition duplicates) are better handled by deterministic linters anyway. But *"cross-page tone consistency"* or *"this API surface is documented in exactly one place"* are real wants and don't fit a deterministic linter — that's where this comes back, with a different execution mode.
+11. **MCP server mode.** Expose `docs-ci` over MCP so an agent (Claude Code, Cursor, etc.) can ask *"judge this draft against the project's rules"* during authoring. Different distribution channel than CI; same underlying engine.
 
 ## Explicitly not on the roadmap
 
