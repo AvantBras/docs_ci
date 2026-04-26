@@ -45,18 +45,21 @@ docs/api/users.md
 docs-ci check PATH --rules RULES.yaml \
   [--provider anthropic|openrouter|nvidia] \
   [--model MODEL] [--fail-on error|warning] \
-  [--no-cache] [--cache-path PATH]
+  [--no-cache] [--cache-path PATH] \
+  [--changed-only] [--base-ref REF]
 ```
 
-| Flag           | Default              | Notes                                                       |
-|----------------|----------------------|-------------------------------------------------------------|
-| `PATH`         | required             | Docs directory to scan (markdown only in v0).               |
-| `--rules`      | required             | Path to rules YAML.                                         |
-| `--provider`   | `anthropic`          | LLM provider. See *Providers* below.                        |
-| `--model`      | provider default     | Model ID. Defaults vary per provider.                       |
-| `--fail-on`    | `error`              | Exit 1 on failures at or above this severity.               |
-| `--no-cache`   | off                  | Disable the persistent verdict cache for this run.          |
-| `--cache-path` | `.docs-ci/cache.json`| Where the verdict cache lives. See *Verdict cache* below.   |
+| Flag             | Default              | Notes                                                       |
+|------------------|----------------------|-------------------------------------------------------------|
+| `PATH`           | required             | Docs directory to scan (markdown only in v0).               |
+| `--rules`        | required             | Path to rules YAML.                                         |
+| `--provider`     | `anthropic`          | LLM provider. See *Providers* below.                        |
+| `--model`        | provider default     | Model ID. Defaults vary per provider.                       |
+| `--fail-on`      | `error`              | Exit 1 on failures at or above this severity.               |
+| `--no-cache`     | off                  | Disable the persistent verdict cache for this run.          |
+| `--cache-path`   | `.docs-ci/cache.json`| Where the verdict cache lives. See *Verdict cache* below.   |
+| `--changed-only` | off                  | Only judge files that changed since `--base-ref`. See *Diff mode* below. |
+| `--base-ref`     | auto-detected        | Git ref to diff against in `--changed-only` mode.           |
 
 Exit codes: `0` (all required rules passed), `1` (failure at or above `--fail-on`), `2` (config / CLI error).
 
@@ -118,6 +121,26 @@ Add `.docs-ci/` to your `.gitignore` — the cache is local. In CI, persist it a
 ```
 
 `--no-cache` disables it entirely for one run; `--cache-path` relocates the file.
+
+## Diff mode
+
+`--changed-only` skips files that haven't changed since a base git ref. Composes with the verdict cache: the cache makes unchanged files free to re-judge, diff mode skips them entirely without even reading them — useful on huge repos where the per-file cache lookup itself adds up.
+
+```bash
+# Local: diff against the auto-detected default branch
+docs-ci check ./docs --rules ./rules.yaml --changed-only
+
+# CI: diff against the PR's base ref
+docs-ci check ./docs --rules ./rules.yaml \
+  --changed-only --base-ref origin/main
+```
+
+Behavior notes:
+
+- The default base ref is auto-detected via `git symbolic-ref refs/remotes/origin/HEAD`, falling back to `origin/main`. Override with `--base-ref REF` (e.g. `origin/master`, `origin/develop`).
+- Tracked-only — untracked `.md` files (new files not yet `git add`-ed) are not included. Run without `--changed-only` while drafting new docs locally.
+- If the rules YAML itself has changed since the base ref, `docs-ci` warns on stderr and continues anyway — re-run without `--changed-only` for a full check after touching rules.
+- Requires a git working tree; errors at exit code 2 if invoked outside one.
 
 ## License
 

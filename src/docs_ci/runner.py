@@ -18,6 +18,7 @@ def run(
     judge: Judge,
     *,
     cache: VerdictCache | NullCache,
+    changed_files: set[Path] | None = None,
 ) -> list[Verdict]:
     verdicts: list[Verdict] = []
     fp = prompt_fingerprint()
@@ -27,6 +28,12 @@ def run(
     # inside lets calls 2..N for the same file hit the prompt cache. Swapping the
     # loops wastes the cache.
     for path in iter_docs(docs_root):
+        if changed_files is not None and path.resolve() not in changed_files:
+            # Diff mode: skip files that haven't changed since the base ref.
+            # Doesn't open the file, doesn't compute a cache key, doesn't
+            # consult the cache. The cache stays consistent because we
+            # simply produce no verdicts for skipped files this run.
+            continue
         content = path.read_text(encoding="utf-8")
         relative = str(path.relative_to(docs_root))
         for rule in cfg.rules:

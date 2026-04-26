@@ -176,6 +176,80 @@ def test_null_cache_always_calls_judge(tmp_path: Path):
 # --- loop order preserved -------------------------------------------------
 
 
+# --- diff mode ------------------------------------------------------------
+
+
+def test_changed_files_filter_runs_only_listed(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "alpha", "b.md": "beta", "c.md": "gamma"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+
+    judge = _FakeJudge()
+    changed = {(docs / "a.md").resolve(), (docs / "c.md").resolve()}
+    run(
+        cfg=cfg,
+        docs_root=docs,
+        judge=judge,
+        cache=NullCache(),
+        changed_files=changed,
+    )
+    # b.md skipped entirely.
+    assert {p for p, _ in judge.calls} == {"a.md", "c.md"}
+
+
+def test_changed_files_empty_set_skips_everything(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "x", "b.md": "y"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+
+    judge = _FakeJudge()
+    verdicts = run(
+        cfg=cfg,
+        docs_root=docs,
+        judge=judge,
+        cache=NullCache(),
+        changed_files=set(),
+    )
+    assert judge.calls == []
+    assert verdicts == []
+
+
+def test_changed_files_none_runs_everything(tmp_path: Path):
+    """Regression: existing call sites that don't pass changed_files still work."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "x", "b.md": "y"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+
+    judge = _FakeJudge()
+    run(cfg=cfg, docs_root=docs, judge=judge, cache=NullCache())
+    assert {p for p, _ in judge.calls} == {"a.md", "b.md"}
+
+
+def test_changed_files_does_not_open_skipped_files(tmp_path: Path):
+    """Files outside the changed set must not be read from disk."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    real = docs / "real.md"
+    real.write_text("# real")
+    # Create then delete to leave a nonexistent path that would crash if read.
+    ghost = docs / "ghost.md"
+    ghost.write_text("placeholder")
+    judge = _FakeJudge()
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+    ghost.unlink()  # iter_docs won't yield it now, but assert anyway:
+    run(
+        cfg=cfg,
+        docs_root=docs,
+        judge=judge,
+        cache=NullCache(),
+        changed_files={real.resolve()},
+    )
+    assert {p for p, _ in judge.calls} == {"real.md"}
+
+
 def test_loop_order_files_outer_rules_inner(tmp_path: Path):
     """AGENTS.md invariant #2: same file, different rules issued back-to-back
     so the per-file prompt cache benefits."""

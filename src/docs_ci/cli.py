@@ -6,6 +6,15 @@ from pydantic import ValidationError
 
 from docs_ci.cache import DEFAULT_CACHE_PATH, NullCache, VerdictCache
 from docs_ci.config import Provider, Severity, load_rules
+from docs_ci.diff import (
+    changed_files as compute_changed_files,
+)
+from docs_ci.diff import (
+    default_base_ref,
+    find_repo_root,
+    is_path_in_diff,
+    verify_ref,
+)
 from docs_ci.judges import build_judge, default_model
 from docs_ci.report import exit_code, format_report
 from docs_ci.runner import run
@@ -65,6 +74,16 @@ def check(
         "--cache-path",
         help="Path to the persistent verdict cache (JSON).",
     ),
+    changed_only: bool = typer.Option(
+        False,
+        "--changed-only",
+        help="Only judge files that changed since --base-ref (requires a git working tree).",
+    ),
+    base_ref: str = typer.Option(
+        None,
+        "--base-ref",
+        help="Git ref to diff against in --changed-only mode. Defaults to origin/HEAD.",
+    ),
 ) -> None:
     """Check a docs directory against a rules YAML."""
     try:
@@ -86,6 +105,50 @@ def check(
     cache: VerdictCache | NullCache
     cache = NullCache() if no_cache else VerdictCache.load(cache_path)
 
-    verdicts = run(cfg=cfg, docs_root=path, judge=judge, cache=cache)
+    changed: set[Path] | None = None
+    if changed_only:
+        try:
+            repo_root = find_repo_root(path)
+            resolved_base = base_ref or default_base_ref(repo_root)
+            verify_ref(repo_root, resolved_base)
+            changed = compute_changed_files(
+                repo_root=repo_root,
+                base_ref=resolved_base,
+                docs_root=path,
+            )
+            # Total markdown count is cheap (just walks the tree); useful
+            # context in the stderr summary.
+            from docs_ci.discover import iter_docs
+
+            total = sum(1 for _ in iter_docs(path))
+            typer.echo(
+                f"diff mode: {len(changed)} of {total} markdown file"
+                f"{'s' if total != 1 else ''} changed since {resolved_base}",
+                err=True,
+            )
+            if is_path_in_diff(
+                repo_root=repo_root, base_ref=resolved_base, target=rules
+            ):
+                typer.echo(
+                    f"warning: --rules file {rules.name!r} has changed since "
+                    f"{resolved_base}.\n"
+                    "         --changed-only will skip docs that didn't change, "
+                    "leaving them\n"
+                    "         with potentially stale verdicts. Re-run without "
+                    "--changed-only\n"
+                    "         for a full check.",
+                    err=True,
+                )
+        except RuntimeError as e:
+            typer.echo(f"error: {e}", err=True)
+            raise typer.Exit(code=2)
+
+    verdicts = run(
+        cfg=cfg,
+        docs_root=path,
+        judge=judge,
+        cache=cache,
+        changed_files=changed,
+    )
     typer.echo(format_report(verdicts, docs_root=path))
     raise typer.Exit(code=exit_code(verdicts, fail_on=fail_on))
