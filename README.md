@@ -67,6 +67,33 @@ Exit codes: `0` (all required rules passed), `1` (failure at or above `--fail-on
 
 Anthropic prompt caching is applied when calling the Anthropic provider directly, and is forwarded as best-effort when routing through OpenRouter to an `anthropic/*` model. Other provider+model combinations send no cache hints.
 
+### Setup
+
+1. Pick a provider from the table above.
+2. Generate an API key from the linked dashboard.
+3. Copy [`.env.example`](.env.example) to `.env` (or export the variable directly) and fill in the matching `*_API_KEY`.
+4. Run `docs-ci check ./docs --rules ./examples/rules.example.yaml --provider <name>`. Add `--model <id>` to override the per-provider default.
+
+Examples:
+
+```bash
+# Anthropic, default model
+export ANTHROPIC_API_KEY=sk-ant-...
+docs-ci check ./docs --rules ./examples/rules.example.yaml
+
+# OpenRouter, routing to Anthropic Haiku (free tier on some accounts)
+export OPENROUTER_API_KEY=sk-or-...
+docs-ci check ./docs --rules ./examples/rules.example.yaml \
+  --provider openrouter --model anthropic/claude-haiku-4-5
+
+# NVIDIA build.nvidia.com (free credits / free models on some accounts)
+export NVIDIA_API_KEY=nvapi-...
+docs-ci check ./docs --rules ./examples/rules.example.yaml \
+  --provider nvidia --model meta/llama-3.1-70b-instruct
+```
+
+Tip: OpenRouter and NVIDIA both occasionally offer free access to specific models — handy for trying `docs-ci` on a real docs set without spending anything. Whatever model you pick must support tool / function calling; `docs-ci` forces a structured `submit_verdict` call and will error out otherwise.
+
 ## License
 
 CRAPL — see [CRAPL-LICENCE.txt](CRAPL-LICENCE.txt).
