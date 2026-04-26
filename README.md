@@ -171,4 +171,4 @@ Notes:
 
 ## License
 
-CRAPL — see [CRAPL-LICENCE.txt](CRAPL-LICENCE.txt).
+MIT — see [LICENSE](LICENSE).
