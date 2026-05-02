@@ -6,6 +6,7 @@ import pytest
 
 from docs_ci.config import Provider, Rule, Severity
 from docs_ci.judges import (
+    DEBUG_MODEL_OUTPUT_CHARS,
     JUDGE_MAX_TOKENS,
     PROVIDER_DEFAULTS,
     AnthropicJudge,
@@ -161,6 +162,24 @@ class TestAnthropicJudge:
 
         judge = AnthropicJudge(client=client, model="claude-haiku-4-5")
         with pytest.raises(RuntimeError, match="expected tool_use"):
+            _judge_call(judge)
+
+    def test_debug_model_output_includes_text_block_on_missing_tool_use(self):
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "I will explain instead of calling the tool."
+        response = MagicMock()
+        response.content = [text_block]
+        response.stop_reason = "end_turn"
+        client = MagicMock()
+        client.messages.create.return_value = response
+
+        judge = AnthropicJudge(
+            client=client,
+            model="claude-haiku-4-5",
+            debug_model_output=True,
+        )
+        with pytest.raises(RuntimeError, match="model_debug_content_0_text"):
             _judge_call(judge)
 
 
@@ -319,6 +338,58 @@ class TestOpenAICompatJudge:
         with pytest.raises(RuntimeError, match="expected tool_use"):
             _judge_call(judge)
 
+    def test_missing_tool_call_debug_output_includes_message_content(self):
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "length",
+                    "message": {
+                        "role": "assistant",
+                        "content": "I am going to reason in prose instead of calling the tool.",
+                        "tool_calls": [],
+                    },
+                }
+            ]
+        }
+        transport = _fake_transport(response)
+        judge = OpenAICompatJudge(
+            model="poolside/laguna-xs.2:free",
+            provider=Provider.openrouter,
+            transport=transport,
+            debug_model_output=True,
+        )
+        with pytest.raises(RuntimeError) as exc:
+            _judge_call(judge)
+
+        message = str(exc.value)
+        assert "model_debug_finish_reason: length" in message
+        assert "model_debug_message_content" in message
+        assert "reason in prose" in message
+
+    def test_missing_tool_call_omits_debug_output_by_default(self):
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "length",
+                    "message": {
+                        "role": "assistant",
+                        "content": "this should stay hidden",
+                        "tool_calls": [],
+                    },
+                }
+            ]
+        }
+        transport = _fake_transport(response)
+        judge = OpenAICompatJudge(
+            model="poolside/laguna-xs.2:free",
+            provider=Provider.openrouter,
+            transport=transport,
+        )
+        with pytest.raises(RuntimeError) as exc:
+            _judge_call(judge)
+
+        assert "this should stay hidden" not in str(exc.value)
+
     def test_invalid_tool_arguments_raises(self):
         response = {
             "choices": [
@@ -349,6 +420,67 @@ class TestOpenAICompatJudge:
         )
         with pytest.raises(RuntimeError, match="invalid tool_use arguments"):
             _judge_call(judge)
+
+    def test_invalid_tool_arguments_debug_output_includes_raw_arguments(self):
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "tool_calls",
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "c",
+                                "type": "function",
+                                "function": {
+                                    "name": "submit_verdict",
+                                    "arguments": '{"passed": true} trailing prose',
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
+        transport = _fake_transport(response)
+        judge = OpenAICompatJudge(
+            model="poolside/laguna-xs.2:free",
+            provider=Provider.openrouter,
+            transport=transport,
+            debug_model_output=True,
+        )
+        with pytest.raises(RuntimeError) as exc:
+            _judge_call(judge)
+
+        message = str(exc.value)
+        assert "model_debug_tool_calls" in message
+        assert "trailing prose" in message
+
+    def test_debug_output_is_truncated(self):
+        response = {
+            "choices": [
+                {
+                    "finish_reason": "length",
+                    "message": {
+                        "role": "assistant",
+                        "content": "x" * (DEBUG_MODEL_OUTPUT_CHARS + 10),
+                        "tool_calls": [],
+                    },
+                }
+            ]
+        }
+        transport = _fake_transport(response)
+        judge = OpenAICompatJudge(
+            model="poolside/laguna-xs.2:free",
+            provider=Provider.openrouter,
+            transport=transport,
+            debug_model_output=True,
+        )
+        with pytest.raises(RuntimeError) as exc:
+            _judge_call(judge)
+
+        assert "[truncated]" in str(exc.value)
 
 
 # --- build_judge ----------------------------------------------------------

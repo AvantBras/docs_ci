@@ -48,6 +48,7 @@ docs-ci check PATH --rules RULES.yaml \
   [--no-cache] [--cache-path PATH] \
   [--retries N] [--retry-delay-seconds SECONDS] \
   [--retry-max-delay-seconds SECONDS] \
+  [--debug-model-output] \
   [--changed-only] [--base-ref REF]
 ```
 
@@ -64,6 +65,7 @@ docs-ci check PATH --rules RULES.yaml \
 | `--retries`      | `0`                   | Retry each transient provider/model failure this many extra times.             |
 | `--retry-delay-seconds` | `2`            | Initial delay before retrying a failed verdict call.                           |
 | `--retry-max-delay-seconds` | `30`       | Maximum delay between verdict call retries.                                    |
+| `--debug-model-output` | off             | Print truncated raw model output when a provider response cannot be parsed.    |
 | `--changed-only` | off                   | Only judge files that changed since `--base-ref`. See *Diff mode* below.       |
 | `--base-ref`     | auto-detected         | Git ref to diff against in `--changed-only` mode.                              |
 
@@ -72,6 +74,9 @@ Exit codes: `0` (all required rules passed), `1` (failure at or above `--fail-on
 Retries happen per `(file, rule)` call, after cache lookup and before writing a fresh verdict to the cache.
 They are only used for transient provider/model failures such as HTTP 429/5xx, connection errors, timeouts,
 and missing structured tool-call responses. Config/auth errors are not retried.
+
+`--debug-model-output` is meant for provider/model debugging. It may print snippets of model output derived from
+your docs into CI logs, so leave it off unless you are diagnosing malformed or missing tool calls.
 
 ## Providers
 
@@ -252,6 +257,7 @@ jobs:
 | `retries`        | `0`                   | Retry each transient provider/model failure this many extra times.                                         |
 | `retry-delay-seconds` | `2`              | Initial delay before retrying a failed verdict call.                                                       |
 | `retry-max-delay-seconds` | `30`         | Maximum delay between verdict call retries.                                                                |
+| `debug-model-output` | `false`           | Print truncated raw model output when a provider response cannot be parsed. Use only for debugging.        |
 | `changed-only`   | `false`               | Only judge files changed since `base-ref`. Requires `fetch-depth: 0`.                                      |
 | `base-ref`       | *(auto-detected)*     | Git ref to diff against in changed-only mode.                                                              |
 | `api-key`        | *(env fallback)*      | Provider API key. Falls back to `*_API_KEY` runner env vars if empty.                                      |

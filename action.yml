@@ -47,6 +47,10 @@ inputs:
     description: 'Maximum delay between verdict call retries.'
     required: false
     default: '30'
+  debug-model-output:
+    description: 'Print truncated raw model output when a provider response cannot be parsed. Use only for debugging.'
+    required: false
+    default: 'false'
   changed-only:
     description: 'Only judge files changed since base-ref. Requires fetch-depth: 0 on actions/checkout.'
     required: false
@@ -90,6 +94,7 @@ runs:
         INPUT_RETRIES: ${{ inputs.retries }}
         INPUT_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
         INPUT_RETRY_MAX_DELAY_SECONDS: ${{ inputs.retry-max-delay-seconds }}
+        INPUT_DEBUG_MODEL_OUTPUT: ${{ inputs.debug-model-output }}
         INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
         INPUT_BASE_REF: ${{ inputs.base-ref }}
         ANTHROPIC_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.ANTHROPIC_API_KEY }}
@@ -109,6 +114,7 @@ runs:
         )
         [[ -n "$INPUT_MODEL" ]] && args+=(--model "$INPUT_MODEL")
         [[ "$INPUT_CACHE" == "false" ]] && args+=(--no-cache)
+        [[ "$INPUT_DEBUG_MODEL_OUTPUT" == "true" ]] && args+=(--debug-model-output)
         [[ "$INPUT_CHANGED_ONLY" == "true" ]] && args+=(--changed-only)
         [[ -n "$INPUT_BASE_REF" ]] && args+=(--base-ref "$INPUT_BASE_REF")
         docs-ci "${args[@]}"

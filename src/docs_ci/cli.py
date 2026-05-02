@@ -107,6 +107,11 @@ def check(
         min=0.0,
         help="Maximum delay between verdict call retries.",
     ),
+    debug_model_output: bool = typer.Option(
+        False,
+        "--debug-model-output",
+        help="Print truncated raw model output when a provider response cannot be parsed.",
+    ),
 ) -> None:
     """Check a docs directory against a rules YAML."""
     try:
@@ -120,7 +125,11 @@ def check(
 
     resolved_model = model or default_model(provider)
     try:
-        judge = build_judge(provider=provider, model=resolved_model)
+        judge = build_judge(
+            provider=provider,
+            model=resolved_model,
+            debug_model_output=debug_model_output,
+        )
     except RuntimeError as e:
         typer.echo(f"error: {e}", err=True)
         raise typer.Exit(code=2)

@@ -54,7 +54,8 @@ PROVIDER_DEFAULTS: dict[Provider, dict[str, Any]] = {
     },
 }
 
-JUDGE_MAX_TOKENS = 1024
+JUDGE_MAX_TOKENS = 4096
+DEBUG_MODEL_OUTPUT_CHARS = 16_000
 
 # Per-call HTTP timeout for the raw-HTTP transport. NVIDIA's free endpoints
 # can be slow under load (e.g. recently-released models on the trial tier),
@@ -145,9 +146,16 @@ class AnthropicJudge:
 
     provider: Provider = Provider.anthropic
 
-    def __init__(self, client: Anthropic, model: str) -> None:
+    def __init__(
+        self,
+        client: Anthropic,
+        model: str,
+        *,
+        debug_model_output: bool = False,
+    ) -> None:
         self._client = client
         self.model = model
+        self._debug_model_output = debug_model_output
 
     def judge(
         self,
@@ -194,6 +202,7 @@ class AnthropicJudge:
             raise RuntimeError(
                 f"expected tool_use response for rule {rule.id!r} on {relative_path}, "
                 f"got stop_reason={response.stop_reason}"
+                f"{_anthropic_debug_suffix(response, enabled=self._debug_model_output)}"
             )
 
         data = tool_use.input
@@ -239,10 +248,12 @@ class OpenAICompatJudge:
         model: str,
         provider: Provider,
         transport: Transport,
+        debug_model_output: bool = False,
     ) -> None:
         self.provider = provider
         self._transport = transport
         self.model = model
+        self._debug_model_output = debug_model_output
 
     def _supports_cache_passthrough(self) -> bool:
         return self.provider == Provider.openrouter and self.model.startswith(
@@ -329,13 +340,16 @@ class OpenAICompatJudge:
             raise RuntimeError(
                 f"expected tool_use response for rule {rule.id!r} on {relative_path}, "
                 f"got finish_reason={finish_reason}"
+                f"{_openai_debug_suffix(response, enabled=self._debug_model_output)}"
             )
 
         try:
-            data = json.loads(tool_calls[0]["function"]["arguments"])
+            arguments = tool_calls[0]["function"]["arguments"]
+            data = json.loads(arguments)
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             raise RuntimeError(
                 f"invalid tool_use arguments for rule {rule.id!r} on {relative_path}: {e}"
+                f"{_openai_debug_suffix(response, enabled=self._debug_model_output)}"
             ) from e
 
         return Verdict(
@@ -354,7 +368,12 @@ def default_model(provider: Provider) -> str:
     return PROVIDER_DEFAULTS[provider]["model"]
 
 
-def build_judge(provider: Provider, model: str | None = None) -> Judge:
+def build_judge(
+    provider: Provider,
+    model: str | None = None,
+    *,
+    debug_model_output: bool = False,
+) -> Judge:
     """Construct a Judge for the given provider, reading the API key from env.
 
     Raises ``RuntimeError`` if the expected env var is missing — the CLI
@@ -372,7 +391,11 @@ def build_judge(provider: Provider, model: str | None = None) -> Judge:
 
     if provider == Provider.anthropic:
         client = Anthropic(api_key=api_key)
-        return AnthropicJudge(client=client, model=resolved_model)
+        return AnthropicJudge(
+            client=client,
+            model=resolved_model,
+            debug_model_output=debug_model_output,
+        )
 
     if provider == Provider.nvidia:
         # Raw-HTTP transport: ~17x faster than the openai SDK on this endpoint
@@ -390,4 +413,70 @@ def build_judge(provider: Provider, model: str | None = None) -> Judge:
         model=resolved_model,
         provider=provider,
         transport=transport,
+        debug_model_output=debug_model_output,
     )
+
+
+# ---- debug formatting ----------------------------------------------------
+
+
+def _debug_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            text = repr(value)
+    if len(text) > DEBUG_MODEL_OUTPUT_CHARS:
+        return text[:DEBUG_MODEL_OUTPUT_CHARS] + "... [truncated]"
+    return text
+
+
+def _debug_section(label: str, value: Any) -> str:
+    text = _debug_text(value)
+    if not text:
+        return ""
+    return f"\nmodel_debug_{label}: {text}"
+
+
+def _openai_debug_suffix(response: dict[str, Any], *, enabled: bool) -> str:
+    if not enabled:
+        return ""
+    try:
+        choice = response["choices"][0]
+    except (KeyError, IndexError, TypeError):
+        return _debug_section("raw_response", response)
+    if not isinstance(choice, dict):
+        return _debug_section("raw_choice", choice)
+
+    message = choice.get("message")
+    parts = [_debug_section("finish_reason", choice.get("finish_reason"))]
+    if isinstance(message, dict):
+        parts.extend(
+            [
+                _debug_section("message_content", message.get("content")),
+                _debug_section("message_reasoning", message.get("reasoning")),
+                _debug_section("tool_calls", message.get("tool_calls")),
+            ]
+        )
+    else:
+        parts.append(_debug_section("message", message))
+    return "".join(parts)
+
+
+def _anthropic_debug_suffix(response: Any, *, enabled: bool) -> str:
+    if not enabled:
+        return ""
+    parts = [_debug_section("stop_reason", getattr(response, "stop_reason", None))]
+    for index, block in enumerate(getattr(response, "content", []) or []):
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            parts.append(
+                _debug_section(f"content_{index}_text", getattr(block, "text", None))
+            )
+        else:
+            parts.append(_debug_section(f"content_{index}", block))
+    return "".join(parts)
