@@ -333,6 +333,32 @@ def test_retryable_judge_error_retries_before_success(tmp_path: Path):
     assert verdicts[0].passed is True
 
 
+def test_invalid_tool_arguments_are_retryable(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "x"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+    judge = _FlakyJudge(
+        [
+            RuntimeError(
+                "invalid tool_use arguments for rule 'r' on a.md: Extra data: line 1 column 224 (char 223)"
+            )
+        ]
+    )
+
+    verdicts = run(
+        cfg=cfg,
+        docs_root=docs,
+        judge=judge,
+        cache=NullCache(),
+        retry_config=RetryConfig(retries=1, initial_delay_seconds=0, jitter_seconds=0),
+        sleep=lambda _: None,
+    )
+
+    assert judge.calls == [("a.md", "r"), ("a.md", "r")]
+    assert verdicts[0].reason == "fresh after retry"
+
+
 def test_retryable_judge_error_raises_after_retries_exhausted(tmp_path: Path):
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -365,9 +391,9 @@ def test_non_retryable_judge_error_is_not_retried(tmp_path: Path):
     docs.mkdir()
     _write_docs(docs, {"a.md": "x"})
     cfg = _make_cfg(Rule(id="r", criterion="c"))
-    judge = _FlakyJudge([RuntimeError("invalid tool_use arguments for rule 'r'")])
+    judge = _FlakyJudge([RuntimeError("HTTP 401 from https://example.test")])
 
-    with pytest.raises(RuntimeError, match="invalid tool_use arguments"):
+    with pytest.raises(RuntimeError, match="HTTP 401"):
         run(
             cfg=cfg,
             docs_root=docs,

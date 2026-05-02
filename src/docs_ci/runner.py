@@ -78,6 +78,7 @@ def is_retryable_judge_error(exc: BaseException) -> bool:
         "HTTP transport error",
         "expected tool_use response",
         "finish_reason=length",
+        "invalid tool_use arguments",
         "rate limit",
         "Rate limit",
         "timeout",

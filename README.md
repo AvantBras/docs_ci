@@ -78,7 +78,7 @@ and missing structured tool-call responses. Config/auth errors are not retried.
 | `--provider` | Endpoint                                 | API key env var      | Default model                 |
 |--------------|------------------------------------------|----------------------|-------------------------------|
 | `anthropic`  | api.anthropic.com (native)               | `ANTHROPIC_API_KEY`  | `claude-haiku-4-5`            |
-| `openrouter` | openrouter.ai (OpenAI-compatible)        | `OPENROUTER_API_KEY` | `anthropic/claude-haiku-4-5`  |
+| `openrouter` | openrouter.ai (OpenAI-compatible)        | `OPENROUTER_API_KEY` | `openrouter/free`            |
 | `nvidia`     | integrate.api.nvidia.com (OpenAI-compat) | `NVIDIA_API_KEY`     | `meta/llama-3.1-70b-instruct` |
 
 Anthropic prompt caching is applied when calling the Anthropic provider directly, and is forwarded as best-effort when routing through OpenRouter to an `anthropic/*` model. Other provider+model combinations send no cache hints.

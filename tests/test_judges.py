@@ -173,7 +173,9 @@ class TestOpenAICompatJudge:
         assert judge.provider == Provider.nvidia
 
     def test_returns_verdict_from_tool_call(self):
-        transport = _fake_transport(_ok_openai_response(passed=False, reason="no example"))
+        transport = _fake_transport(
+            _ok_openai_response(passed=False, reason="no example")
+        )
         rule = Rule(
             id="has-example",
             severity=Severity.warning,
@@ -365,8 +367,10 @@ class TestBuildJudge:
         monkeypatch.setattr(judges_mod, "OpenAI", real_openai)
 
         assert isinstance(judge, OpenAICompatJudge)
-        assert judge.model == "anthropic/claude-haiku-4-5"
-        assert observed["base_url"] == PROVIDER_DEFAULTS[Provider.openrouter]["base_url"]
+        assert judge.model == "openrouter/free"
+        assert (
+            observed["base_url"] == PROVIDER_DEFAULTS[Provider.openrouter]["base_url"]
+        )
 
     def test_nvidia_default_model_uses_http_transport(self, monkeypatch):
         # NVIDIA must NOT instantiate the OpenAI SDK — it uses raw httpx.
