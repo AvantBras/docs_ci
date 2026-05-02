@@ -1,0 +1,89 @@
+name: 'docs-ci'
+description: 'LLM-judged documentation checks for CI. Runs natural-language rules against markdown files and surfaces failures as inline PR annotations.'
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  path:
+    description: 'Docs directory to scan (markdown only).'
+    required: true
+  rules:
+    description: 'Path to rules YAML.'
+    required: true
+  provider:
+    description: 'LLM provider: anthropic | openrouter | nvidia.'
+    required: false
+    default: 'anthropic'
+  model:
+    description: 'Model ID. Defaults to the provider-specific default if empty.'
+    required: false
+    default: ''
+  fail-on:
+    description: 'Exit 1 on failures at or above this severity: error | warning.'
+    required: false
+    default: 'error'
+  format:
+    description: 'Output format: github | text. Defaults to github (the CLI defaults to text; the action only runs in CI).'
+    required: false
+    default: 'github'
+  cache:
+    description: 'Enable the persistent verdict cache. Set to false to disable.'
+    required: false
+    default: 'true'
+  cache-path:
+    description: 'Path to the verdict cache JSON.'
+    required: false
+    default: '.docs-ci/cache.json'
+  changed-only:
+    description: 'Only judge files changed since base-ref. Requires fetch-depth: 0 on actions/checkout.'
+    required: false
+    default: 'false'
+  base-ref:
+    description: 'Git ref to diff against in changed-only mode. Auto-detected if empty.'
+    required: false
+    default: ''
+  api-key:
+    description: 'Provider API key. If empty, ANTHROPIC_API_KEY / OPENROUTER_API_KEY / NVIDIA_API_KEY from the runner environment are used instead.'
+    required: false
+    default: ''
+  python-version:
+    description: 'Python version to install.'
+    required: false
+    default: '3.11'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install docs-ci
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+
+    - name: Run docs-ci
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_RULES: ${{ inputs.rules }}
+        INPUT_PROVIDER: ${{ inputs.provider }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_CACHE: ${{ inputs.cache }}
+        INPUT_CACHE_PATH: ${{ inputs.cache-path }}
+        INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
+        INPUT_BASE_REF: ${{ inputs.base-ref }}
+        ANTHROPIC_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.ANTHROPIC_API_KEY }}
+        OPENROUTER_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.OPENROUTER_API_KEY }}
+        NVIDIA_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.NVIDIA_API_KEY }}
+      run: |
+        args=(check "$INPUT_PATH" --rules "$INPUT_RULES" --provider "$INPUT_PROVIDER" --fail-on "$INPUT_FAIL_ON" --format "$INPUT_FORMAT" --cache-path "$INPUT_CACHE_PATH")
+        [[ -n "$INPUT_MODEL" ]] && args+=(--model "$INPUT_MODEL")
+        [[ "$INPUT_CACHE" == "false" ]] && args+=(--no-cache)
+        [[ "$INPUT_CHANGED_ONLY" == "true" ]] && args+=(--changed-only)
+        [[ -n "$INPUT_BASE_REF" ]] && args+=(--base-ref "$INPUT_BASE_REF")
+        docs-ci "${args[@]}"

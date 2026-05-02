@@ -145,7 +145,7 @@ Behavior notes:
 
 ## GitHub Actions
 
-The CLI is designed to run in GitHub Actions: annotations output, git diff mode, and a persistent cache are all wired in. There's no marketplace action wrapper yet (v1 milestone — see [ROADMAP.md](ROADMAP.md)), so the workflow installs the CLI from this repo and invokes it directly.
+docs-ci ships a thin composite action ([`action.yml`](action.yml)) so consumers can `uses:` it directly instead of writing the install / setup-python / invoke chain by hand. Linux runners only in v0 — no Windows / macOS coverage yet.
 
 > **Public-repo caveat.** docs-ci feeds contributor-supplied markdown to an LLM call signed with your API key. On a public repo: an adversarial PR can burn through provider budget with oversized files (set a spend cap on the key), and a verdict can be flipped via prompt injection in the markdown (treat green as advisory, not a security signal). Don't use `pull_request_target` to expose the key to fork PRs — it's a known footgun. See *PRs from forks* below.
 
@@ -173,14 +173,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # --changed-only diffs against the base ref, needs history
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install docs-ci
-        run: pip install git+https://github.com/AvantBras/docs_ci.git
+          fetch-depth: 0   # changed-only diffs against the base ref, needs history
 
       - uses: actions/cache@v4
         with:
@@ -188,24 +181,25 @@ jobs:
           key: docs-ci-${{ hashFiles('**/*.md', 'rules.yaml') }}
           restore-keys: docs-ci-
 
-      - name: Run docs-ci
-        run: |
-          docs-ci check ./docs --rules ./rules.yaml \
-            --format github --changed-only \
-            --base-ref origin/${{ github.base_ref }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      - uses: AvantBras/docs_ci@v1
+        with:
+          path: ./docs
+          rules: ./rules.yaml
+          changed-only: true
+          base-ref: origin/${{ github.base_ref }}
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 Notes on the choices:
 
-- `fetch-depth: 0` is required for `--changed-only`; the default shallow checkout breaks `git diff`.
-- The `paths:` filter keeps the job from running on PRs that don't touch docs. Adjust to match where your rules and docs actually live.
-- Pin the install for reproducible runs once you have a tag or commit you trust: `pip install git+https://github.com/AvantBras/docs_ci.git@<tag-or-sha>`. Without `@`, you get whatever's on `main` at install time.
+- `fetch-depth: 0` is required for `changed-only: true`; the default shallow checkout breaks `git diff`.
+- `paths:` filter keeps the job from running on PRs that don't touch docs. Adjust to match where your rules and docs actually live.
+- The `actions/cache@v4` step is optional but worthwhile — verdicts persist across runs (see *Verdict cache* above). The action does not bundle this step itself; cache keys are project-specific.
+- Pin the action ref (`@v1`, or a commit SHA) for reproducible runs.
 
 ### Example: scheduled / nightly run
 
-Drop `--changed-only` and trigger on `schedule:`. The verdict cache makes a full re-scan cheap — only files that actually changed since the last run hit the LLM.
+Drop `changed-only` and trigger on `schedule:`. The verdict cache makes a full re-scan cheap — only files that actually changed since the last run hit the LLM.
 
 ```yaml
 on:
@@ -213,11 +207,39 @@ on:
     - cron: '0 6 * * *'   # 06:00 UTC daily
   workflow_dispatch:        # also run on demand from the Actions tab
 
-# ...same checkout / setup-python / install / cache steps as above, then:
-      - run: docs-ci check ./docs --rules ./rules.yaml --format github
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: .docs-ci
+          key: docs-ci-${{ hashFiles('**/*.md', 'rules.yaml') }}
+          restore-keys: docs-ci-
+      - uses: AvantBras/docs_ci@v1
+        with:
+          path: ./docs
+          rules: ./rules.yaml
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+### Action inputs
+
+| Input            | Default               | Notes                                                                                                      |
+|------------------|-----------------------|------------------------------------------------------------------------------------------------------------|
+| `path`           | required              | Docs directory to scan (markdown only).                                                                    |
+| `rules`          | required              | Path to rules YAML.                                                                                        |
+| `provider`       | `anthropic`           | LLM provider: `anthropic`, `openrouter`, or `nvidia`.                                                      |
+| `model`          | *(provider default)*  | Model ID. Falls back to the provider's default if empty.                                                   |
+| `fail-on`        | `error`               | Exit 1 on failures at or above this severity.                                                              |
+| `format`         | `github`              | Output format. Note: CLI defaults to `text`; the action defaults to `github` since CI is its only surface. |
+| `cache`          | `true`                | Persistent verdict cache. Set `false` to disable.                                                          |
+| `cache-path`     | `.docs-ci/cache.json` | Path to the verdict cache JSON.                                                                            |
+| `changed-only`   | `false`               | Only judge files changed since `base-ref`. Requires `fetch-depth: 0`.                                      |
+| `base-ref`       | *(auto-detected)*     | Git ref to diff against in changed-only mode.                                                              |
+| `api-key`        | *(env fallback)*      | Provider API key. Falls back to `*_API_KEY` runner env vars if empty.                                      |
+| `python-version` | `3.11`                | Python version to install.                                                                                 |
 
 ### PRs from forks
 
