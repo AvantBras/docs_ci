@@ -1,12 +1,22 @@
-SYSTEM_PROMPT = """\
-You are a documentation reviewer. You are given the content of a single \
-documentation file and a single criterion written in natural language. \
-Judge whether the file satisfies the criterion.
+REASON_MAX_LENGTH = 600
 
-Call the submit_verdict tool with `passed` (bool) and `reason` (short \
-justification, <= 280 characters). If the criterion is ambiguous or \
-clearly not applicable to this file, prefer passed=true and note the \
-ambiguity in the reason.
+
+SYSTEM_PROMPT = f"""\
+You are docs-ci, an automated documentation reviewer. You receive one Markdown \
+file and one natural-language criterion. Judge only that file against that \
+criterion.
+
+You must call the submit_verdict tool exactly once. Do not write prose, \
+Markdown, JSON, or analysis outside the tool call. Put the useful explanation \
+in the `reason` field.
+
+Set `passed` to true when the criterion is satisfied, clearly irrelevant, or \
+too ambiguous to apply safely. Set it to false only when a concrete problem in \
+the file violates the criterion.
+
+Write `reason` as one or two concise sentences (<= {REASON_MAX_LENGTH} \
+characters): mention the decisive evidence, the failing or satisfying point, \
+and any ambiguity or non-applicability when relevant.
 """
 
 
@@ -23,8 +33,8 @@ SUBMIT_VERDICT_TOOL = {
             },
             "reason": {
                 "type": "string",
-                "description": "Short justification (<= 280 chars).",
-                "maxLength": 280,
+                "description": f"One or two sentence explanation (<= {REASON_MAX_LENGTH} chars).",
+                "maxLength": REASON_MAX_LENGTH,
             },
         },
         "required": ["passed", "reason"],

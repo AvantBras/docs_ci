@@ -6,13 +6,14 @@ import pytest
 
 from docs_ci.config import Provider, Rule, Severity
 from docs_ci.judges import (
+    JUDGE_MAX_TOKENS,
     PROVIDER_DEFAULTS,
     AnthropicJudge,
     OpenAICompatJudge,
     build_judge,
     default_model,
 )
-from docs_ci.prompts import SUBMIT_VERDICT_TOOL
+from docs_ci.prompts import REASON_MAX_LENGTH, SUBMIT_VERDICT_TOOL, SYSTEM_PROMPT
 
 
 # --- helpers --------------------------------------------------------------
@@ -114,6 +115,7 @@ class TestAnthropicJudge:
         _judge_call(AnthropicJudge(client=client, model="claude-haiku-4-5"))
 
         kwargs = client.messages.create.call_args.kwargs
+        assert kwargs["max_tokens"] == JUDGE_MAX_TOKENS
         assert kwargs["tools"] == [SUBMIT_VERDICT_TOOL]
         assert kwargs["tool_choice"] == {"type": "tool", "name": "submit_verdict"}
 
@@ -209,6 +211,7 @@ class TestOpenAICompatJudge:
         _judge_call(judge)
 
         body = transport.captured[0]
+        assert body["max_tokens"] == JUDGE_MAX_TOKENS
         tools = body["tools"]
         assert len(tools) == 1
         assert tools[0]["type"] == "function"
@@ -219,6 +222,16 @@ class TestOpenAICompatJudge:
             "type": "function",
             "function": {"name": "submit_verdict"},
         }
+
+    def test_tool_schema_allows_useful_but_bounded_reasons(self):
+        reason_schema = SUBMIT_VERDICT_TOOL["input_schema"]["properties"]["reason"]
+        assert reason_schema["maxLength"] == REASON_MAX_LENGTH
+        assert "one or two sentence explanation" in reason_schema["description"].lower()
+
+    def test_system_prompt_puts_explanation_inside_tool_call(self):
+        assert "call the submit_verdict tool exactly once" in SYSTEM_PROMPT
+        assert "outside the tool call" in SYSTEM_PROMPT
+        assert "`reason` field" in SYSTEM_PROMPT
 
     def test_nvidia_sends_no_cache_hints(self):
         transport = _fake_transport(_ok_openai_response())
@@ -367,7 +380,7 @@ class TestBuildJudge:
         monkeypatch.setattr(judges_mod, "OpenAI", real_openai)
 
         assert isinstance(judge, OpenAICompatJudge)
-        assert judge.model == "openrouter/free"
+        assert judge.model == "poolside/laguna-xs.2:free"
         assert (
             observed["base_url"] == PROVIDER_DEFAULTS[Provider.openrouter]["base_url"]
         )

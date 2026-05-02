@@ -54,6 +54,8 @@ PROVIDER_DEFAULTS: dict[Provider, dict[str, Any]] = {
     },
 }
 
+JUDGE_MAX_TOKENS = 1024
+
 # Per-call HTTP timeout for the raw-HTTP transport. NVIDIA's free endpoints
 # can be slow under load (e.g. recently-released models on the trial tier),
 # so this is generous; the typical happy path responds in <2s.
@@ -105,9 +107,7 @@ def _make_http_transport(
         except httpx.HTTPError as e:
             raise RuntimeError(f"HTTP transport error: {e}") from e
         if resp.status_code >= 400:
-            raise RuntimeError(
-                f"HTTP {resp.status_code} from {url}: {resp.text[:500]}"
-            )
+            raise RuntimeError(f"HTTP {resp.status_code} from {url}: {resp.text[:500]}")
         try:
             return resp.json()
         except json.JSONDecodeError as e:
@@ -158,7 +158,7 @@ class AnthropicJudge:
     ) -> Verdict:
         response = self._client.messages.create(
             model=self.model,
-            max_tokens=512,
+            max_tokens=JUDGE_MAX_TOKENS,
             system=[
                 {
                     "type": "text",
@@ -245,9 +245,8 @@ class OpenAICompatJudge:
         self.model = model
 
     def _supports_cache_passthrough(self) -> bool:
-        return (
-            self.provider == Provider.openrouter
-            and self.model.startswith("anthropic/")
+        return self.provider == Provider.openrouter and self.model.startswith(
+            "anthropic/"
         )
 
     def _build_body(
@@ -298,7 +297,7 @@ class OpenAICompatJudge:
 
         return {
             "model": self.model,
-            "max_tokens": 512,
+            "max_tokens": JUDGE_MAX_TOKENS,
             "messages": messages,
             "tools": [_openai_function_tool()],
             "tool_choice": {
