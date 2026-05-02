@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from docs_ci.cache import NullCache, VerdictCache
 from docs_ci.config import Provider, Rule, RulesConfig, Severity, Verdict
-from docs_ci.runner import run
+from docs_ci.runner import RetryConfig, is_retryable_judge_error, run
 
 
 class _FakeJudge:
@@ -24,6 +26,26 @@ class _FakeJudge:
             severity=rule.severity,
             passed=rule.id in file_content,
             reason=f"fresh:{rule.id}",
+        )
+
+
+class _FlakyJudge(_FakeJudge):
+    def __init__(
+        self, failures: list[Exception], model: str = "claude-haiku-4-5"
+    ) -> None:
+        super().__init__(model=model)
+        self.failures = failures
+
+    def judge(self, *, file_path, relative_path, file_content, rule):
+        self.calls.append((relative_path, rule.id))
+        if self.failures:
+            raise self.failures.pop(0)
+        return Verdict(
+            file=file_path,
+            rule_id=rule.id,
+            severity=rule.severity,
+            passed=True,
+            reason="fresh after retry",
         )
 
 
@@ -114,7 +136,9 @@ def test_rule_rename_only_does_not_invalidate(tmp_path: Path):
 
     cfg2 = _make_cfg(Rule(id="new-name", criterion="same prose"))
     judge2 = _FakeJudge()
-    verdicts = run(cfg=cfg2, docs_root=docs, judge=judge2, cache=VerdictCache.load(cache_path))
+    verdicts = run(
+        cfg=cfg2, docs_root=docs, judge=judge2, cache=VerdictCache.load(cache_path)
+    )
     # No fresh call.
     assert judge2.calls == []
     # Verdict reflects the *current* rule id (cache stores only passed/reason;
@@ -271,3 +295,95 @@ def test_loop_order_files_outer_rules_inner(tmp_path: Path):
         ("b.md", "r1"),
         ("b.md", "r2"),
     ]
+
+
+# --- retries --------------------------------------------------------------
+
+
+def test_retryable_judge_error_retries_before_success(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "x"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+    judge = _FlakyJudge(
+        [
+            RuntimeError(
+                "expected tool_use response for rule 'r' on a.md, got finish_reason=length"
+            )
+        ]
+    )
+    events = []
+    sleeps = []
+
+    verdicts = run(
+        cfg=cfg,
+        docs_root=docs,
+        judge=judge,
+        cache=NullCache(),
+        retry_config=RetryConfig(retries=2, initial_delay_seconds=0, jitter_seconds=0),
+        on_retry=events.append,
+        sleep=sleeps.append,
+    )
+
+    assert judge.calls == [("a.md", "r"), ("a.md", "r")]
+    assert len(events) == 1
+    assert events[0].attempt == 1
+    assert events[0].max_attempts == 3
+    assert sleeps == [0]
+    assert verdicts[0].passed is True
+
+
+def test_retryable_judge_error_raises_after_retries_exhausted(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "x"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+    judge = _FlakyJudge(
+        [
+            RuntimeError("HTTP 502 from https://example.test"),
+            RuntimeError("HTTP 502 from https://example.test"),
+        ]
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 502"):
+        run(
+            cfg=cfg,
+            docs_root=docs,
+            judge=judge,
+            cache=NullCache(),
+            retry_config=RetryConfig(
+                retries=1, initial_delay_seconds=0, jitter_seconds=0
+            ),
+            sleep=lambda _: None,
+        )
+
+    assert judge.calls == [("a.md", "r"), ("a.md", "r")]
+
+
+def test_non_retryable_judge_error_is_not_retried(tmp_path: Path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    _write_docs(docs, {"a.md": "x"})
+    cfg = _make_cfg(Rule(id="r", criterion="c"))
+    judge = _FlakyJudge([RuntimeError("invalid tool_use arguments for rule 'r'")])
+
+    with pytest.raises(RuntimeError, match="invalid tool_use arguments"):
+        run(
+            cfg=cfg,
+            docs_root=docs,
+            judge=judge,
+            cache=NullCache(),
+            retry_config=RetryConfig(
+                retries=3, initial_delay_seconds=0, jitter_seconds=0
+            ),
+            sleep=lambda _: None,
+        )
+
+    assert judge.calls == [("a.md", "r")]
+
+
+def test_retryable_error_detection_uses_status_code_attribute():
+    class StatusError(Exception):
+        status_code = 429
+
+    assert is_retryable_judge_error(StatusError("rate limited")) is True

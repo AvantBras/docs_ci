@@ -17,7 +17,7 @@ from docs_ci.diff import (
 )
 from docs_ci.judges import build_judge, default_model
 from docs_ci.report import Format, exit_code, format_report
-from docs_ci.runner import run
+from docs_ci.runner import RetryConfig, RetryEvent, run
 
 app = typer.Typer(
     help="CI tooling that uses a small LLM to judge natural-language criteria against a project's docs.",
@@ -89,6 +89,24 @@ def check(
         "--base-ref",
         help="Git ref to diff against in --changed-only mode. Defaults to origin/HEAD.",
     ),
+    retries: int = typer.Option(
+        0,
+        "--retries",
+        min=0,
+        help="Retry each transient provider/model failure this many extra times.",
+    ),
+    retry_delay_seconds: float = typer.Option(
+        2.0,
+        "--retry-delay-seconds",
+        min=0.0,
+        help="Initial delay before retrying a failed verdict call.",
+    ),
+    retry_max_delay_seconds: float = typer.Option(
+        30.0,
+        "--retry-max-delay-seconds",
+        min=0.0,
+        help="Maximum delay between verdict call retries.",
+    ),
 ) -> None:
     """Check a docs directory against a rules YAML."""
     try:
@@ -148,12 +166,35 @@ def check(
             typer.echo(f"error: {e}", err=True)
             raise typer.Exit(code=2)
 
-    verdicts = run(
-        cfg=cfg,
-        docs_root=path,
-        judge=judge,
-        cache=cache,
-        changed_files=changed,
+    retry_config = RetryConfig(
+        retries=retries,
+        initial_delay_seconds=retry_delay_seconds,
+        max_delay_seconds=retry_max_delay_seconds,
     )
+
+    try:
+        verdicts = run(
+            cfg=cfg,
+            docs_root=path,
+            judge=judge,
+            cache=cache,
+            changed_files=changed,
+            retry_config=retry_config,
+            on_retry=_print_retry,
+        )
+    except Exception as e:
+        typer.echo(f"error: {e}", err=True)
+        raise typer.Exit(code=1)
     typer.echo(format_report(verdicts, docs_root=path, format=output_format))
     raise typer.Exit(code=exit_code(verdicts, fail_on=fail_on))
+
+
+def _print_retry(event: RetryEvent) -> None:
+    typer.echo(
+        "retrying "
+        f"{event.relative_path} / {event.rule_id} "
+        f"after attempt {event.attempt}/{event.max_attempts}: "
+        f"{event.error} "
+        f"(sleeping {event.delay_seconds:.1f}s)",
+        err=True,
+    )

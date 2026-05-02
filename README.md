@@ -46,6 +46,8 @@ docs-ci check PATH --rules RULES.yaml \
   [--provider anthropic|openrouter|nvidia] \
   [--model MODEL] [--fail-on error|warning] [--format text|github] \
   [--no-cache] [--cache-path PATH] \
+  [--retries N] [--retry-delay-seconds SECONDS] \
+  [--retry-max-delay-seconds SECONDS] \
   [--changed-only] [--base-ref REF]
 ```
 
@@ -59,10 +61,17 @@ docs-ci check PATH --rules RULES.yaml \
 | `--format`       | `text`                | Output format. `github` emits Actions annotations. See *GitHub Actions* below. |
 | `--no-cache`     | off                   | Disable the persistent verdict cache for this run.                             |
 | `--cache-path`   | `.docs-ci/cache.json` | Where the verdict cache lives. See *Verdict cache* below.                      |
+| `--retries`      | `0`                   | Retry each transient provider/model failure this many extra times.             |
+| `--retry-delay-seconds` | `2`            | Initial delay before retrying a failed verdict call.                           |
+| `--retry-max-delay-seconds` | `30`       | Maximum delay between verdict call retries.                                    |
 | `--changed-only` | off                   | Only judge files that changed since `--base-ref`. See *Diff mode* below.       |
 | `--base-ref`     | auto-detected         | Git ref to diff against in `--changed-only` mode.                              |
 
 Exit codes: `0` (all required rules passed), `1` (failure at or above `--fail-on`), `2` (config / CLI error).
+
+Retries happen per `(file, rule)` call, after cache lookup and before writing a fresh verdict to the cache.
+They are only used for transient provider/model failures such as HTTP 429/5xx, connection errors, timeouts,
+and missing structured tool-call responses. Config/auth errors are not retried.
 
 ## Providers
 
@@ -92,6 +101,10 @@ docs-ci check ./docs --rules ./examples/rules.example.yaml
 export OPENROUTER_API_KEY=sk-or-...
 docs-ci check ./docs --rules ./examples/rules.example.yaml \
   --provider openrouter --model anthropic/claude-haiku-4-5
+
+# OpenRouter free router, useful for low-cost dogfooding
+docs-ci check ./docs --rules ./examples/rules.example.yaml \
+  --provider openrouter --model openrouter/free --retries 3
 
 # NVIDIA build.nvidia.com (free credits / free models on some accounts)
 export NVIDIA_API_KEY=nvapi-...
@@ -236,6 +249,9 @@ jobs:
 | `format`         | `github`              | Output format. Note: CLI defaults to `text`; the action defaults to `github` since CI is its only surface. |
 | `cache`          | `true`                | Persistent verdict cache. Set `false` to disable.                                                          |
 | `cache-path`     | `.docs-ci/cache.json` | Path to the verdict cache JSON.                                                                            |
+| `retries`        | `0`                   | Retry each transient provider/model failure this many extra times.                                         |
+| `retry-delay-seconds` | `2`              | Initial delay before retrying a failed verdict call.                                                       |
+| `retry-max-delay-seconds` | `30`         | Maximum delay between verdict call retries.                                                                |
 | `changed-only`   | `false`               | Only judge files changed since `base-ref`. Requires `fetch-depth: 0`.                                      |
 | `base-ref`       | *(auto-detected)*     | Git ref to diff against in changed-only mode.                                                              |
 | `api-key`        | *(env fallback)*      | Provider API key. Falls back to `*_API_KEY` runner env vars if empty.                                      |

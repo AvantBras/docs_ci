@@ -35,6 +35,18 @@ inputs:
     description: 'Path to the verdict cache JSON.'
     required: false
     default: '.docs-ci/cache.json'
+  retries:
+    description: 'Retry each transient provider/model failure this many extra times.'
+    required: false
+    default: '0'
+  retry-delay-seconds:
+    description: 'Initial delay before retrying a failed verdict call.'
+    required: false
+    default: '2'
+  retry-max-delay-seconds:
+    description: 'Maximum delay between verdict call retries.'
+    required: false
+    default: '30'
   changed-only:
     description: 'Only judge files changed since base-ref. Requires fetch-depth: 0 on actions/checkout.'
     required: false
@@ -75,13 +87,26 @@ runs:
         INPUT_FORMAT: ${{ inputs.format }}
         INPUT_CACHE: ${{ inputs.cache }}
         INPUT_CACHE_PATH: ${{ inputs.cache-path }}
+        INPUT_RETRIES: ${{ inputs.retries }}
+        INPUT_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
+        INPUT_RETRY_MAX_DELAY_SECONDS: ${{ inputs.retry-max-delay-seconds }}
         INPUT_CHANGED_ONLY: ${{ inputs.changed-only }}
         INPUT_BASE_REF: ${{ inputs.base-ref }}
         ANTHROPIC_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.ANTHROPIC_API_KEY }}
         OPENROUTER_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.OPENROUTER_API_KEY }}
         NVIDIA_API_KEY: ${{ inputs.api-key != '' && inputs.api-key || env.NVIDIA_API_KEY }}
       run: |
-        args=(check "$INPUT_PATH" --rules "$INPUT_RULES" --provider "$INPUT_PROVIDER" --fail-on "$INPUT_FAIL_ON" --format "$INPUT_FORMAT" --cache-path "$INPUT_CACHE_PATH")
+        args=(
+          check "$INPUT_PATH"
+          --rules "$INPUT_RULES"
+          --provider "$INPUT_PROVIDER"
+          --fail-on "$INPUT_FAIL_ON"
+          --format "$INPUT_FORMAT"
+          --cache-path "$INPUT_CACHE_PATH"
+          --retries "$INPUT_RETRIES"
+          --retry-delay-seconds "$INPUT_RETRY_DELAY_SECONDS"
+          --retry-max-delay-seconds "$INPUT_RETRY_MAX_DELAY_SECONDS"
+        )
         [[ -n "$INPUT_MODEL" ]] && args+=(--model "$INPUT_MODEL")
         [[ "$INPUT_CACHE" == "false" ]] && args+=(--no-cache)
         [[ "$INPUT_CHANGED_ONLY" == "true" ]] && args+=(--changed-only)
