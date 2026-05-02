@@ -45,7 +45,7 @@ PROVIDER_DEFAULTS: dict[Provider, dict[str, Any]] = {
     Provider.openrouter: {
         "base_url": "https://openrouter.ai/api/v1",
         "env": "OPENROUTER_API_KEY",
-        "model": "openrouter/free",
+        "model": "poolside/laguna-xs.2:free",
     },
     Provider.nvidia: {
         "base_url": "https://integrate.api.nvidia.com/v1",
